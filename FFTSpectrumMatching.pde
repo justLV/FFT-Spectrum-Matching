@@ -16,6 +16,9 @@
   by Bryan Newbold
 */
 
+
+#include "PlainFFT.h"
+
 int sensorPin = 0;   // Select the input pin for the potentiometer
 int sensorValue = 0; // Variable to store the value coming from the sensor
 
