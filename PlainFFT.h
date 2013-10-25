@@ -17,10 +17,13 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 	
 */
+#include <stdint.h>
+
+
 
 #ifndef PlainFFT_h /* Prevent loading library twice */
 #define PlainFFT_h
-#include <stdint.h>
+
 
 #include "WProgram.h" /* This is where the standard Arduino code lies */
 
