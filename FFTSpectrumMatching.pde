@@ -42,31 +42,53 @@ void PrintVector(double *vData, uint8_t bufferSize, uint8_t scaleType)  {
 
 void process() {
 
-  	//PrintVector(vReal, NSAMPLES, SCL_TIME);
+        // first we need to weight the data - http://www.arduinoos.com/2010/10/fast-fourier-transform-fft-cont/
+	FFT.Windowing(vReal, NSAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
+	//PrintVector(vReal, NSAMPLES, SCL_TIME);
 
-	FFT.Windowing(vReal, NSAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD); /* Weigh data */
-	PrintVector(vReal, NSAMPLES, SCL_TIME);
-
-	FFT.Compute(vReal, vImag, NSAMPLES, FFT_FORWARD); /* Compute FFT */
+        // then we compute the fft - http://www.arduinoos.com/2010/10/fast-fourier-transform-fft-cont/
+	FFT.Compute(vReal, vImag, NSAMPLES, FFT_FORWARD);
 	PrintVector(vReal, NSAMPLES, SCL_INDEX);
 	PrintVector(vImag, NSAMPLES, SCL_INDEX);
 
-	FFT.ComplexToMagnitude(vReal, vImag, NSAMPLES); /* Compute magnitudes */
-	//PrintVector(vReal, (NSAMPLES >> 1), SCL_FREQUENCY);
+        // testing only : for analysis we need to convert numbers from imaginary to mangitude - but we may not need this to fingerprint audio.
+	FFT.ComplexToMagnitude(vReal, vImag, NSAMPLES);
+	PrintVector(vReal, (NSAMPLES >> 1), SCL_FREQUENCY);
 
+        // testing only : and the final goal for an example like this is to show we can pick out the major tone
 	double x = FFT.MajorPeak(vReal, NSAMPLES, SAMPLEFREQUENCY);
 	SerialUSB.println(x, 6);
 }
 
 void loop()  {
 
-  // xxx todo:
-  // - what is the maximum htz of this loop? we need to throttle it to a specific rate - probably 24000 or so to catch frequencies we want.
-  // - we need a delay or else the serial output will overload the mac serial port
+  // xxx todo
+  
+  // we need something like this :
+ 
+  // http://www.arduinoos.com/2010/10/sound-capture-cont/
+  // http://forums.leaflabs.com/topic.php?id=12668
+  // http://leaflabs.com/2010/07/audio-and-guitar-effects-on-maple/
+  // http://forums.leaflabs.com/topic.php?id=162
+  // http://forums.leaflabs.com/topic.php?id=154#post-1001
+  
+  // the last link above is a good example - they have a busy wait loop that watches the raw input and accumulates as fast as it can.
+  // once they are happy with what they have they stop and do some processing.
+  // we could do this, throwing away data at a certain rate.
+ 
+  // we also need a general delay() just to print debug without thrashing our serial port
+  
+  
+//    ADC.acquireData(vData);
+//    for (uint16_t i = 0; i < samples; i++) {
+//        vReal[i] = double(vData[i]);
+//    }
+
 
         int sensorValue = analogRead(SENSORPIN);
 
         vReal[count] = sensorValue;
+  
         count++;
         if(count>=64) {
           count = 0;
