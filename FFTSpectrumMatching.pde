@@ -64,10 +64,6 @@ void loop()
   
         //Read sensor (Justin)
         sensorValue = analogRead(sensorPin);
-	
-
-
-
 
       /* Build raw data */
 	double cycles = (((samples-1) * signalFrequency) / samplingFrequency);
@@ -91,7 +87,7 @@ void loop()
 void PrintVector(double *vData, uint8_t bufferSize, uint8_t scaleType) 
 {	
 	for (uint16_t i = 0; i < bufferSize; i++) {
-		double abscissa;
+		double abscissa = 0;
 		/* Print abscissa value */
 		switch (scaleType) {
 		case SCL_INDEX:
