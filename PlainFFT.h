@@ -20,6 +20,7 @@
 
 #ifndef PlainFFT_h /* Prevent loading library twice */
 #define PlainFFT_h
+#include <stdint.h>
 
 #include "WProgram.h" /* This is where the standard Arduino code lies */
 
