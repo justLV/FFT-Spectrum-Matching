@@ -105,14 +105,35 @@ void loop()  {
 
 }
 
-void setup() {
+void myhandler() {
+}
 
+void setup() {
+  
+    // led
+
+    pinMode(BOARD_LED_PIN, OUTPUT);
+
+    // audio
+  
     pinMode(SENSORPIN, INPUT_ANALOG);
 
-    // Declare the LED's pin as an OUTPUT.  (BOARD_LED_PIN is a built-in
-    // constant which is the pin number of the built-in LED.  On the
-    // Maple, it is 13.)
-    pinMode(BOARD_LED_PIN, OUTPUT);
+    // timer - a timer has a bunch of counters, when one of those counters rolls over specified value the timer fires.
+
+
+    Timer3.pause();
+    Timer3.refresh();
+    Timer3.setChannel1Mode(TIMER_OUTPUTCOMPARE);
+    Timer3.setCompare1(1);
+    Timer3.attachCompare1Interrupt(myhandler);
+
+    // uint32_t cycles = (uint32_t)(22.671f * (float)CYCLES_PER_MICROSECOND);
+    // uint16_t pre = (uint16_t)((cycles >> 16) + 1);
+    // Timer3.setPrescaleFactor(pre);
+    // Timer3.setOverflow((cycles / pre) - 1);
+
+    Timer3.setPeriod( 22.671f);
+    Timer3.resume();
 
 }
 
