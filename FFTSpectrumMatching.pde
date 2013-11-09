@@ -2,20 +2,29 @@
 #include <stdint.h>
 #include "PlainFFT.h"
 
-#define SENSORPIN 0
 
-#define NSAMPLES 64
-#define SIGNALFREQUENCY 1000
-#define SAMPLEFREQUENCY 5000
-
+#define SAMPLEFREQUENCY 22671
 #define SCL_INDEX     0x00
 #define SCL_TIME      0x01
 #define SCL_FREQUENCY 0x02
 
+#define MYAUDIOPIN 0
+
+#define NSAMPLESBITS 8
+#define NSAMPLES (2<<NSAMPLESBITS)
+
+#define NCIRCULARBITS 16
+#define NCIRCULAR (2<<NCIRCULARBITS)
+
+static double circularBuffer[NCIRCULAR];
+static int circularBufferIndex = 0;
+static int circularBufferVisited = 0;
+
 static PlainFFT FFT = PlainFFT();
-static double vReal[NSAMPLES];
-static double vImag[NSAMPLES];
-static int count = 0;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// audio processing
+/////////////////////////////////////////////////////////////////////////////////////////////////
 
 void PrintVector(double *vData, uint8_t bufferSize, uint8_t scaleType)  {	
 	for (uint16_t i = 0; i < bufferSize; i++) {
@@ -41,99 +50,92 @@ void PrintVector(double *vData, uint8_t bufferSize, uint8_t scaleType)  {
 }
 
 void process() {
-
-        // first we need to weight the data - http://www.arduinoos.com/2010/10/fast-fourier-transform-fft-cont/
-	FFT.Windowing(vReal, NSAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
-	//PrintVector(vReal, NSAMPLES, SCL_TIME);
-
-        // then we compute the fft - http://www.arduinoos.com/2010/10/fast-fourier-transform-fft-cont/
-	FFT.Compute(vReal, vImag, NSAMPLES, FFT_FORWARD);
-	PrintVector(vReal, NSAMPLES, SCL_INDEX);
-	PrintVector(vImag, NSAMPLES, SCL_INDEX);
-
-        // testing only : for analysis we need to convert numbers from imaginary to mangitude - but we may not need this to fingerprint audio.
-	FFT.ComplexToMagnitude(vReal, vImag, NSAMPLES);
-	PrintVector(vReal, (NSAMPLES >> 1), SCL_FREQUENCY);
-
-        // testing only : and the final goal for an example like this is to show we can pick out the major tone
-	double x = FFT.MajorPeak(vReal, NSAMPLES, SAMPLEFREQUENCY);
-	SerialUSB.println(x, 6);
-}
-
-void loop()  {
-
-  // xxx todo
-  
-  // we need something like this :
  
-  // http://www.arduinoos.com/2010/10/sound-capture-cont/
-  // http://forums.leaflabs.com/topic.php?id=12668
-  // http://leaflabs.com/2010/07/audio-and-guitar-effects-on-maple/
-  // http://forums.leaflabs.com/topic.php?id=162
-  // http://forums.leaflabs.com/topic.php?id=154#post-1001
+  toggleLED();
   
-  // the last link above is a good example - they have a busy wait loop that watches the raw input and accumulates as fast as it can.
-  // once they are happy with what they have they stop and do some processing.
-  // we could do this, throwing away data at a certain rate.
- 
-  // we also need a general delay() just to print debug without thrashing our serial port
-  
-  
-//    ADC.acquireData(vData);
-//    for (uint16_t i = 0; i < samples; i++) {
-//        vReal[i] = double(vData[i]);
-//    }
+  static double audioReal[NSAMPLES];
+  static double audioImaginary[NSAMPLES];
 
+  for(int i = 0; i < NSAMPLES; i++ ) audioReal[i] = circularBuffer[i+circularBufferVisited]; // memcpy?
 
-        int sensorValue = analogRead(SENSORPIN);
+  // first we need to weight the data - http://www.arduinoos.com/2010/10/fast-fourier-transform-fft-cont/
+  FFT.Windowing(audioReal, NSAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
+  //PrintVector(audioReal, NSAMPLES, SCL_TIME);
 
-        vReal[count] = sensorValue;
-  
-        count++;
-        if(count>=64) {
-          count = 0;
-          process();
-        }
+  // then we compute the fft - http://www.arduinoos.com/2010/10/fast-fourier-transform-fft-cont/
+  FFT.Compute(audioReal, audioImaginary, NSAMPLES, FFT_FORWARD);
+  PrintVector(audioReal, NSAMPLES, SCL_INDEX);
+  PrintVector(audioImaginary, NSAMPLES, SCL_INDEX);
 
+  // testing only : for analysis we need to convert numbers from imaginary to mangitude - but we may not need this to fingerprint audio.
+  FFT.ComplexToMagnitude(audioReal, audioImaginary, NSAMPLES);
+  PrintVector(audioReal, (NSAMPLES >> 1), SCL_FREQUENCY);
 
-
-        // make a test sine wave
-  	//double cycles = (((NSAMPLES-1) * SIGNALFREQUENCY) / SAMPLEFREQUENCY);
-	//for (uint8_t i = 0; i < NSAMPLES; i++) {
-	//	vReal[i] = uint8_t((SIGNALINTENSITY * (sin((i * (6.2831 * cycles)) / NSAMPLES) + 1.0)) / 2.0);
-	//}
-
+  // testing only : and the final goal for an example like this is to show we can pick out the major tone
+  double x = FFT.MajorPeak(audioReal, NSAMPLES, SAMPLEFREQUENCY);
+  SerialUSB.println(x, 6);
 }
 
-void myhandler() {
-}
-
-void setup() {
-  
-    // led
-
+void process_setup() {
     pinMode(BOARD_LED_PIN, OUTPUT);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////
+// circular capture
+////////////////////////////////////////////////////////////////////////////////////////
+
+void circular_handler() {
+   int sensorValue = analogRead(MYAUDIOPIN);
+   circularBuffer[circularBufferIndex] = sensorValue;
+   circularBufferIndex = (circularBufferIndex+1)&(NCIRCULAR-1);
+}
+
+void circular_setup() {
 
     // audio
   
-    pinMode(SENSORPIN, INPUT_ANALOG);
+    pinMode(MYAUDIOPIN, INPUT_ANALOG);
 
-    // timer - a timer has a bunch of counters, when one of those counters rolls over specified value the timer fires.
-
+    // timer - a timer has a bunch of counters, when one of those counters rolls over specified value the timer fires...
 
     Timer3.pause();
     Timer3.refresh();
     Timer3.setChannel1Mode(TIMER_OUTPUTCOMPARE);
     Timer3.setCompare1(1);
-    Timer3.attachCompare1Interrupt(myhandler);
+    Timer3.attachCompare1Interrupt(circular_handler);
 
     // uint32_t cycles = (uint32_t)(22.671f * (float)CYCLES_PER_MICROSECOND);
     // uint16_t pre = (uint16_t)((cycles >> 16) + 1);
     // Timer3.setPrescaleFactor(pre);
     // Timer3.setOverflow((cycles / pre) - 1);
 
-    Timer3.setPeriod( 22.671f);
+    Timer3.setPeriod( SAMPLEFREQUENCY / 1000 );
     Timer3.resume();
 
+}
+
+void circular_process() {
+  while(true) {
+    // if we are in the same general block - then wait for the block to be finished
+    if((circularBufferVisited >> NSAMPLESBITS) == (circularBufferIndex >> NSAMPLESBITS) ) break;
+    // otherwise move forward to the next block
+    circularBufferVisited += ((circularBufferVisited+NSAMPLES)&(NCIRCULAR-1));
+    // and chew on it
+    process();
+  }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// main
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+void loop() {
+    circular_process();
+}
+
+void setup() {
+    process_setup();  
+    circular_setup();
 }
 
