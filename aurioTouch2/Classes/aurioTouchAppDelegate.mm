@@ -1123,13 +1123,6 @@ void Divergence_Print(int* expected, int* actual) {
             if(j<bar1) buffer[j]='x';
         }
         NSLog(@"%s",buffer);
-    }
-    for(int i = 0; i < 500; i+=10) {
-        int v1 = expected[i];
-        int v2 = actual[i];
-        int bar1 = (1539119232+v1); if(bar1<0)bar1=0; bar1 = bar1 * 80.0 / 1539119232.0;
-        int bar2 = (1539119232+v2); if(bar2<0)bar2=0; bar2 = bar2 * 80.0 / 1539119232.0;
-        char buffer[95];
         for(int j = 0; j < 90;j++) {
             buffer[j]=0;
             if(j<bar2) buffer[j]='o';
@@ -1256,7 +1249,7 @@ void learn(int* frame, int size) {
             }
 
             // test first one
-            //Divergence_Print(frame,chirps[0].frames);
+            Divergence_Print(frame,chirps[0].frames);
             //break;
 
             // test all
