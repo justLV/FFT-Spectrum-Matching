@@ -1135,7 +1135,7 @@ void Divergence_Print(int* expected, int* actual) {
 // Comparator
 /////////////////////////////////////////////////////////////////////////////////////////
 
-const int FRAMESIZE = 2048;
+const int FRAMESIZE = 512;
 const int FRAMESMAX = 4;
 
 typedef struct {
@@ -1160,7 +1160,7 @@ typedef struct {
         Divergence__Error(FRAMESIZE, frames+nframesmatched*FRAMESIZE, frame, &stats);
 
         if(stats.MeanSqError < 5) {
-            printf("matched on sound #%d part %d of %d parts total divergence \n",i,nframesmatched,nframes,stats.MeanSqError);
+            printf("matched on sound #%d part %d of %d parts total divergence %f\n",i,nframesmatched,nframes,stats.MeanSqError);
             nframesmatched++;
             if(nframesmatched >= nframes) {
                 nframesmatched = 0;
@@ -1187,7 +1187,8 @@ void learn(int* frame, int size) {
     
     bool loud = false;
     
-    if(size != FRAMESIZE) { // hack
+    if(size < FRAMESIZE) {
+        // hack- i am literally throwing away the rest of the frequency space
         return;
     }
     
@@ -1249,7 +1250,7 @@ void learn(int* frame, int size) {
             }
 
             // test first one
-            Divergence_Print(frame,chirps[0].frames);
+            //Divergence_Print(frame,chirps[0].frames);
             //break;
 
             // test all
@@ -1266,24 +1267,21 @@ void learn(int* frame, int size) {
 
 // dec 4 2013
 //
-//  - matching is not very stable
+//  * now I only capture 512 of the 2048 fft frame because the rest of the fft is not useful - usually quiet (especially for chirps)
 //
-//          - chirps are only 100 ms - that means we are capturing silence and the like as well as frequency response
-//          - could we clip the sound exactly to the start and ends of the sound buffer?
+//  - ideally we want the best sound across the entire set of matching frames, not just each frame separately!
+//    to do this would require buffering a few frames and then comparing the entire sound at once, or something like that abstractly
 //
-//          - can we sample more frequently?
+//  - i am concerned that if a chirp is 100ms or less that we are capturing silent start and ends that will mis-match
+//    if we clipped sounds more exactly this would be better - even though fft is atemporal the total energy may be lower
 //
-//          - most of the fft space is unused - there is no sound there - and it is a waste to store it
+//  - a 100ms sample rate might be too slow, if we up the sample rate it might help? basically for many sounds this is toooo short.
 //
+//  - we test for a sound that can be already n frames into a loud period. should we only listen for sounds starting after silence?
 //
-// - right now if it is loud we continue to test against any point
-// - but it might make sense to only test at loudness transitions
-
-
-
-
-
-
+//  - i may need to do some kind of smarter detection for where the total energy is; the detector may just not be very good.
+//
+// http://developer.nokia.com/Community/Wiki/Sound_pattern_matching_using_Fast_Fourier_Transform_in_Windows_Phone
 
 
 
