@@ -881,7 +881,7 @@ static OSStatus	PerformThru(
 	hasNewFFTData = NO;
 }
 
-
+void learn(int* data, int framesize);
 
 - (void)drawSpectrum
 {
@@ -898,7 +898,14 @@ static OSStatus	PerformThru(
 			hasNewFFTData = NO;
 	}
 	
-	if (hasNewFFTData) [self renderFFTToTex];
+	if (hasNewFFTData) {
+        [self renderFFTToTex];
+
+        // anselm
+        int buffer[2048];
+        for(int i = 0; i < 2048;i++)buffer[i]=l_fftData[i];
+        learn(buffer,2048);
+    }
 	
 	glClear(GL_COLOR_BUFFER_BIT);
 	
@@ -1041,5 +1048,263 @@ static OSStatus	PerformThru(
 		}
 	}
 }
+
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// matcher
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct
+{
+    int DataSize;
+    float TotalError;
+    float AbsError;       //< Total Absolute Error
+    float SqError;        //< Total Squared Error
+    float MeanError;
+    float MeanAbsError;
+    float MeanSqError;
+    float RMSError;     //< Root Mean Square Error
+} DIVERGENCE_ERROR_TYPE;
+
+void Divergence__Error(int size, float expected[], float actual[], DIVERGENCE_ERROR_TYPE *error);
+
+#ifndef ABS
+#define ABS(x) ((x)>0) ? (x) : (0-(x))
+#endif
+
+void Divergence__Error(int size, int expected[], int actual[], DIVERGENCE_ERROR_TYPE *error)
+{
+    double total_err = 0.0;
+    double abs_err = 0.0;
+    double abs_sqr_err = 0.0;
+    double temp = 0.0;
+    int index = 0;
+    
+    for(index=0; index<size; index++)
+    {
+        temp = (double)(actual[index])-(double)(expected[index]);
+        temp = temp / 100000000;
+        total_err+=temp;
+        abs_err+=ABS(temp);
+        abs_sqr_err+=pow(ABS(temp),2);
+    }
+    
+    temp = (double)size;
+    error->DataSize = (int)size;
+    error->TotalError = (float)total_err;
+    error->AbsError = (float)abs_err;
+    error->SqError = (float)abs_sqr_err;
+    error->MeanError = (float)(total_err/temp);
+    error->MeanAbsError = (float)(abs_err/temp);
+    error->MeanSqError = (float)(abs_sqr_err/temp);
+    error->RMSError = (float)(sqrt(abs_sqr_err/temp));
+    
+    
+}
+
+void Divergence_Print(int* expected, int* actual) {
+    //-1439119232
+    //-589336832
+    //-979908096
+    //-1245010944
+    for(int i = 0; i < 500; i+=10) {
+        int v1 = expected[i];
+        int v2 = actual[i];
+        int bar1 = (1539119232+v1); if(bar1<0)bar1=0; bar1 = bar1 * 80.0 / 1539119232.0;
+        int bar2 = (1539119232+v2); if(bar2<0)bar2=0; bar2 = bar2 * 80.0 / 1539119232.0;
+        char buffer[95];
+        for(int j = 0; j < 90;j++) {
+            buffer[j]=0;
+            if(j<bar1) buffer[j]='x';
+        }
+        NSLog(@"%s",buffer);
+    }
+    for(int i = 0; i < 500; i+=10) {
+        int v1 = expected[i];
+        int v2 = actual[i];
+        int bar1 = (1539119232+v1); if(bar1<0)bar1=0; bar1 = bar1 * 80.0 / 1539119232.0;
+        int bar2 = (1539119232+v2); if(bar2<0)bar2=0; bar2 = bar2 * 80.0 / 1539119232.0;
+        char buffer[95];
+        for(int j = 0; j < 90;j++) {
+            buffer[j]=0;
+            if(j<bar2) buffer[j]='o';
+        }
+        NSLog(@"%s",buffer);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Comparator
+/////////////////////////////////////////////////////////////////////////////////////////
+
+const int FRAMESIZE = 2048;
+const int FRAMESMAX = 4;
+
+typedef struct {
+    int nframes;
+    int nframesmatched;
+    int frames[FRAMESMAX * FRAMESIZE];
+    void reset() {
+        printf("reset\n");
+        nframesmatched = 0;
+    }
+    bool learn(int* frame) {
+        if(nframes < FRAMESMAX) {
+            memcpy(frames+nframes*FRAMESIZE,frame,FRAMESIZE*sizeof(int));
+            nframes++;
+            return true;
+        }
+        return false;
+    }
+    bool match(int i,int* frame) {
+        if(nframes==0)return false;
+        DIVERGENCE_ERROR_TYPE stats;
+        Divergence__Error(FRAMESIZE, frames+nframesmatched*FRAMESIZE, frame, &stats);
+
+        if(stats.MeanSqError < 5) {
+            printf("matched on sound #%d part %d of %d parts total divergence \n",i,nframesmatched,nframes,stats.MeanSqError);
+            nframesmatched++;
+            if(nframesmatched >= nframes) {
+                nframesmatched = 0;
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            printf("failed matched on sound #%d at part %d of %d parts total divergence %f\n",i,nframesmatched,nframes,stats.MeanSqError);
+            nframesmatched = 0;
+            return false;
+        }
+    }
+} Chirp;
+
+#define NCHIRPSMAX 4
+Chirp chirps[NCHIRPSMAX];
+int nchirps = 0;
+int state = 0;
+
+#include <sys/time.h>
+
+void learn(int* frame, int size) {
+    
+    bool loud = false;
+    
+    if(size != FRAMESIZE) { // hack
+        return;
+    }
+    
+    /*
+     //////////////////////////////////////////////////
+     // test code
+     // we get called with about 100 millseconds of sound at a time
+     struct timeval  tv;
+     gettimeofday(&tv, NULL);
+     float time_in_mill = (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000 ;
+     
+     // look to see what the largest frequency spike values are to hard code loudness cutoffs
+     int biggest = 0;
+     for(int i = 0; i < FRAMESIZE; i++) {
+     if(i==0 || frame[i] > biggest) biggest = frame[i];
+     }
+     printf("biggest is %d at time %f\n",biggest,time_in_mill);
+     //////////////////////////////////////////////////
+     */
+    
+    // find if there is a frequency response
+    // a typical frequency response curve might start out with no response, some response and then quiet at higher frequencies
+    //-1439119232
+    //-589336832
+    //-979908096
+    //-1245010944
+    
+    for(int i = 0; i < FRAMESIZE; i++) {
+        if(frame[i] > -766478848.0) {
+            loud = 1;
+        }
+    }
+    
+    switch(state) {
+            
+        case 0:
+            if(!loud) break;
+            state = 1;
+            
+        case 1:
+            if(!loud) {
+                nchirps++;
+                state = nchirps>=NCHIRPSMAX ? 2 : 0;
+                printf("learned a sound of size %d\n",chirps[nchirps-1].nframes);
+            } else {
+                chirps[nchirps].learn(frame);
+            }
+            break;
+            
+        case 2:
+            if(!loud)break;
+            for(int j = 0; j < NCHIRPSMAX;j++) chirps[j].reset();
+            state = 3;
+            
+        case 3:
+            if(!loud) {
+                state = 2;
+                break;
+            }
+
+            // test first one
+            //Divergence_Print(frame,chirps[0].frames);
+            //break;
+
+            // test all
+            for(int i = 0; i < nchirps && i<NCHIRPSMAX;i++) {
+                if( chirps[i].match(i,frame) ) {
+                    state = 2;
+                    printf("success! found a match against sound %d\n",i);
+                    break;
+                }
+            }
+    }
+    
+}
+
+// dec 4 2013
+//
+//  - matching is not very stable
+//
+//          - chirps are only 100 ms - that means we are capturing silence and the like as well as frequency response
+//          - could we clip the sound exactly to the start and ends of the sound buffer?
+//
+//          - can we sample more frequently?
+//
+//          - most of the fft space is unused - there is no sound there - and it is a waste to store it
+//
+//
+// - right now if it is loud we continue to test against any point
+// - but it might make sense to only test at loudness transitions
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @end

@@ -49,8 +49,6 @@ void FFTBufferManager::GrabAudioData(AudioBufferList *inBL)
 	}
 }
 
-void learn(float* frame,int size);
-
 Boolean	FFTBufferManager::ComputeFFT(int32_t *outFFTData)
 {
 	if (HasNewAudioData())
@@ -80,8 +78,6 @@ Boolean	FFTBufferManager::ComputeFFT(int32_t *outFFTData)
         for(UInt32 i=0; i<mFFTLength; ++i)
             outFFTData[i] = (SInt32) tmpData[i];
 
-        learn(tmpData,mFFTLength);
-        
         OSAtomicDecrement32Barrier(&mHasAudioData);
 		OSAtomicIncrement32Barrier(&mNeedsAudioData);
 		mAudioBufferCurrentIndex = 0;
@@ -92,156 +88,3 @@ Boolean	FFTBufferManager::ComputeFFT(int32_t *outFFTData)
 	
 	return false;
 }
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// matcher
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-typedef struct
-{
-    int DataSize;
-    float TotalError;
-    float AbsError;       //< Total Absolute Error
-    float SqError;        //< Total Squared Error
-    float MeanError;
-    float MeanAbsError;
-    float MeanSqError;
-    float RMSError;     //< Root Mean Square Error
-} DIVERGENCE_ERROR_TYPE;
-
-void Divergence__Error(int size, float expected[], float actual[], DIVERGENCE_ERROR_TYPE *error);
-
-#ifndef ABS
-#define ABS(x) ((x)>0) ? (x) : (0-(x))
-#endif
-
-void Divergence__Error(int size, float expected[], float actual[], DIVERGENCE_ERROR_TYPE *error)
-{
-    double total_err = 0.0;
-    double abs_err = 0.0;
-    double abs_sqr_err = 0.0;
-    double temp = 0.0;
-    int index = 0;
-    
-    for(index=0; index<size; index++)
-    {
-        temp = (double)(actual[index])-(double)(expected[index]);
-        total_err+=temp;
-        abs_err+=ABS(temp);
-        abs_sqr_err+=pow(ABS(temp),2);
-    }
-    
-    temp = (double)size;
-    error->DataSize = (int)size;
-    error->TotalError = (float)total_err;
-    error->AbsError = (float)abs_err;
-    error->SqError = (float)abs_sqr_err;
-    error->MeanError = (float)(total_err/temp);
-    error->MeanAbsError = (float)(abs_err/temp);
-    error->MeanSqError = (float)(abs_sqr_err/temp);
-    error->RMSError = (float)(sqrt(abs_sqr_err/temp));
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////
-// Comparator
-/////////////////////////////////////////////////////////////////////////////////////////
-
-const int FRAMESMAX = 8;
-const int FRAMESIZE = 2048;
-
-typedef struct {
-    int nframes;
-    int nframesmatched;
-    float frames[FRAMESMAX][FRAMESIZE];
-    void reset() {
-        nframesmatched = 0;
-    }
-    bool learn(float* frame) {
-        if(nframes < FRAMESMAX) {
-            memcpy(frames[nframes],frame,FRAMESIZE*sizeof(float));
-            nframes++;
-            return true;
-        }
-        return false;
-    }
-    bool match(float* frame) {
-        if(nframes==0)return false;
-        DIVERGENCE_ERROR_TYPE stats;
-        Divergence__Error(512, frame, frames[nframesmatched], &stats);
-        if(stats.MeanSqError < 5) {
-            nframesmatched++;
-            if(nframesmatched >= nframes) {
-                nframesmatched = 0;
-                return true;
-            } else {
-                return false;
-            }
-        }
-        nframesmatched = 0;
-        return false;
-    }
-} Chirp;
-
-#define NCHIRPSMAX 4
-Chirp chirps[NCHIRPSMAX];
-int nchirps = 0;
-int state = 0;
-
-void learn(float* frame, int size) {
-
-    bool loud = false;
-    
-    if(size != 2048) { // hack
-        return;
-    }
-
-    // test
-    //float buffer[2048];
-    //memcpy(buffer,frame,2048*sizeof(float));
-    //float biggest = 0;
-    //for(int i = 0; i < 2048; i++) {
-    //    if(i==0 || buffer[i] > biggest) biggest = buffer[i];
-    //}
-    //printf("biggest is %f\n",biggest);
-    
-    for(int i = 0; i < 2048; i++) {
-        if(frame[i] > -966478848.0) {
-            loud = 1;
-            break;
-        }
-    }
-    
-    switch(state) {
-            
-        case 0:
-            if(!loud) break;
-            state = 1;
-            
-        case 1:
-            if(!loud) {
-                nchirps++;
-                state = nchirps>=NCHIRPSMAX ? 2 : 0;
-                printf("learned a sound\n");
-            } else {
-                chirps[nchirps].learn(frame);
-            }
-            break;
-
-        case 2:
-            for(int i = 0; i < nchirps && i<NCHIRPSMAX;i++) {
-                if( chirps[i].match(frame) ) {
-                    printf("found a match against sound %d\n",i);
-                    for(int j = 0; j < NCHIRPSMAX;j++) chirps[j].reset();
-                    break;
-                }
-            }
-    }
-
-}
-
-
-
-
-
-
-
